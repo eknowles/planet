@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Planet PMTiles</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; height: 100dvh; display: flex; flex-direction: column; }
+    #map { flex: 1; }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      line-height: 1.6;
+      pointer-events: none;
+      z-index: 1;
+    }
+    #info strong { display: block; font-size: 14px; margin-bottom: 4px; }
+    #style-picker {
+      position: absolute;
+      top: 10px;
+      right: 50px;
+      z-index: 1;
+      display: flex;
+      gap: 6px;
+    }
+    #style-picker button {
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      color: #eee;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 6px 12px;
+    }
+    #style-picker button.active, #style-picker button:hover {
+      background: rgba(255,255,255,0.15);
+      border-color: rgba(255,255,255,0.5);
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="info">
+    <strong>planet.pmtiles</strong>
+    <span id="coords">Move mouse over map</span>
+  </div>
+  <div id="style-picker">
+    <button data-theme="light" class="active">Light</button>
+    <button data-theme="dark">Dark</button>
+    <button data-theme="white">White</button>
+    <button data-theme="grayscale">Grayscale</button>
+  </div>
+
+  <script src="https://unpkg.com/pmtiles@4/dist/pmtiles.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.js"></script>
+  <script>
+    const PMTILES_URL = './planet.pmtiles';
+    const GLYPHS = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
+    const SPRITES_BASE = 'https://protomaps.github.io/basemaps-assets/sprites/v4';
+
+    // Register PMTiles protocol
+    const protocol = new pmtiles.Protocol();
+    maplibregl.addProtocol('pmtiles', protocol.tile.bind(protocol));
+
+    // Protomaps-compatible layer themes
+    const THEMES = {
+      light: {
+        bg: '#f8f4f0',
+        water: '#a8d4f5',
+        waterway: '#a8d4f5',
+        earth: '#e0d6ca',
+        park: '#d4e8c2',
+        wood: '#c8ddb0',
+        road_minor: '#ffffff',
+        road_major: '#ffffff',
+        road_highway: '#f6c944',
+        building: '#ddd8d0',
+        building_stroke: '#c8c4bc',
+        label: '#333333',
+        label_halo: 'rgba(255,255,255,0.8)',
+        boundary: '#aaaaaa',
+      },
+      dark: {
+        bg: '#1a1a2e',
+        water: '#16213e',
+        waterway: '#1a4068',
+        earth: '#2d2d44',
+        park: '#1e3a2a',
+        wood: '#1a3022',
+        road_minor: '#3a3a5c',
+        road_major: '#4a4a70',
+        road_highway: '#6a5a20',
+        building: '#2a2a40',
+        building_stroke: '#3a3a50',
+        label: '#ccccdd',
+        label_halo: 'rgba(26,26,46,0.8)',
+        boundary: '#555566',
+      },
+      white: {
+        bg: '#ffffff',
+        water: '#cde4f5',
+        waterway: '#cde4f5',
+        earth: '#f0ede8',
+        park: '#e8f4d8',
+        wood: '#dceec8',
+        road_minor: '#ffffff',
+        road_major: '#ffffff',
+        road_highway: '#fad85c',
+        building: '#eeece8',
+        building_stroke: '#dddad4',
+        label: '#222222',
+        label_halo: 'rgba(255,255,255,0.9)',
+        boundary: '#cccccc',
+      },
+      grayscale: {
+        bg: '#f0f0f0',
+        water: '#c0d0dc',
+        waterway: '#c0d0dc',
+        earth: '#e0e0e0',
+        park: '#d0dcc8',
+        wood: '#c8d4c0',
+        road_minor: '#ffffff',
+        road_major: '#ffffff',
+        road_highway: '#e0e0a0',
+        building: '#d8d8d8',
+        building_stroke: '#c8c8c8',
+        label: '#444444',
+        label_halo: 'rgba(240,240,240,0.85)',
+        boundary: '#bbbbbb',
+      },
+    };
+
+    function buildStyle(theme) {
+      const t = THEMES[theme];
+      return {
+        version: 8,
+        glyphs: GLYPHS,
+        sprite: `${SPRITES_BASE}/${theme}`,
+        sources: {
+          protomaps: {
+            type: 'vector',
+            url: `pmtiles://${PMTILES_URL}`,
+            attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>',
+          },
+        },
+        layers: [
+          {
+            id: 'background',
+            type: 'background',
+            paint: { 'background-color': t.bg },
+          },
+          {
+            id: 'earth',
+            type: 'fill',
+            source: 'protomaps',
+            'source-layer': 'earth',
+            paint: { 'fill-color': t.earth },
+          },
+          {
+            id: 'natural_wood',
+            type: 'fill',
+            source: 'protomaps',
+            'source-layer': 'natural',
+            filter: ['in', 'pmap:kind', 'wood', 'forest'],
+            paint: { 'fill-color': t.wood },
+          },
+          {
+            id: 'natural_park',
+            type: 'fill',
+            source: 'protomaps',
+            'source-layer': 'natural',
+            filter: ['in', 'pmap:kind', 'park', 'nature_reserve', 'protected_area', 'national_park', 'golf_course'],
+            paint: { 'fill-color': t.park },
+          },
+          {
+            id: 'water',
+            type: 'fill',
+            source: 'protomaps',
+            'source-layer': 'water',
+            paint: { 'fill-color': t.water },
+          },
+          {
+            id: 'waterway',
+            type: 'line',
+            source: 'protomaps',
+            'source-layer': 'waterway',
+            paint: { 'line-color': t.waterway, 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.5, 14, 2] },
+          },
+          {
+            id: 'landuse_park',
+            type: 'fill',
+            source: 'protomaps',
+            'source-layer': 'landuse',
+            filter: ['in', 'pmap:kind', 'park', 'recreation_ground', 'garden', 'playground'],
+            paint: { 'fill-color': t.park },
+          },
+          {
+            id: 'roads_minor',
+            type: 'line',
+            source: 'protomaps',
+            'source-layer': 'roads',
+            filter: ['in', 'pmap:kind', 'minor_road', 'service'],
+            paint: {
+              'line-color': t.road_minor,
+              'line-width': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 2],
+            },
+          },
+          {
+            id: 'roads_medium',
+            type: 'line',
+            source: 'protomaps',
+            'source-layer': 'roads',
+            filter: ['in', 'pmap:kind', 'medium_road'],
+            paint: {
+              'line-color': t.road_major,
+              'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 16, 4],
+            },
+          },
+          {
+            id: 'roads_major',
+            type: 'line',
+            source: 'protomaps',
+            'source-layer': 'roads',
+            filter: ['in', 'pmap:kind', 'major_road'],
+            paint: {
+              'line-color': t.road_major,
+              'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.5, 16, 6],
+            },
+          },
+          {
+            id: 'roads_highway',
+            type: 'line',
+            source: 'protomaps',
+            'source-layer': 'roads',
+            filter: ['in', 'pmap:kind', 'highway', 'motorway'],
+            paint: {
+              'line-color': t.road_highway,
+              'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.5, 16, 8],
+            },
+          },
+          {
+            id: 'transit_railway',
+            type: 'line',
+            source: 'protomaps',
+            'source-layer': 'transit',
+            filter: ['==', 'pmap:kind', 'rail'],
+            paint: {
+              'line-color': t.boundary,
+              'line-width': 1,
+              'line-dasharray': [4, 4],
+            },
+          },
+          {
+            id: 'buildings',
+            type: 'fill',
+            source: 'protomaps',
+            'source-layer': 'buildings',
+            paint: {
+              'fill-color': t.building,
+              'fill-outline-color': t.building_stroke,
+            },
+          },
+          {
+            id: 'boundaries',
+            type: 'line',
+            source: 'protomaps',
+            'source-layer': 'boundaries',
+            filter: ['==', 'pmap:kind', 'country'],
+            paint: {
+              'line-color': t.boundary,
+              'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.5, 8, 1.5],
+              'line-dasharray': [3, 2],
+            },
+          },
+          {
+            id: 'boundaries_state',
+            type: 'line',
+            source: 'protomaps',
+            'source-layer': 'boundaries',
+            filter: ['==', 'pmap:kind', 'region'],
+            paint: {
+              'line-color': t.boundary,
+              'line-width': 0.75,
+              'line-dasharray': [4, 3],
+            },
+          },
+          {
+            id: 'places_ocean',
+            type: 'symbol',
+            source: 'protomaps',
+            'source-layer': 'places',
+            filter: ['==', 'pmap:kind', 'ocean'],
+            layout: {
+              'text-field': ['get', 'name'],
+              'text-font': ['Noto Sans Italic'],
+              'text-size': ['interpolate', ['linear'], ['zoom'], 2, 10, 6, 14],
+              'text-transform': 'uppercase',
+              'text-letter-spacing': 0.1,
+            },
+            paint: {
+              'text-color': theme === 'dark' ? '#6090b0' : '#5080a0',
+              'text-halo-color': t.label_halo,
+              'text-halo-width': 1,
+            },
+          },
+          {
+            id: 'places_country',
+            type: 'symbol',
+            source: 'protomaps',
+            'source-layer': 'places',
+            filter: ['==', 'pmap:kind', 'country'],
+            layout: {
+              'text-field': ['get', 'name'],
+              'text-font': ['Noto Sans Bold'],
+              'text-size': ['interpolate', ['linear'], ['zoom'], 2, 8, 6, 14],
+              'text-transform': 'uppercase',
+            },
+            paint: {
+              'text-color': t.label,
+              'text-halo-color': t.label_halo,
+              'text-halo-width': 1.5,
+            },
+          },
+          {
+            id: 'places_state',
+            type: 'symbol',
+            source: 'protomaps',
+            'source-layer': 'places',
+            filter: ['==', 'pmap:kind', 'state'],
+            minzoom: 4,
+            layout: {
+              'text-field': ['get', 'name'],
+              'text-font': ['Noto Sans Regular'],
+              'text-size': ['interpolate', ['linear'], ['zoom'], 4, 9, 8, 13],
+            },
+            paint: {
+              'text-color': t.label,
+              'text-halo-color': t.label_halo,
+              'text-halo-width': 1,
+            },
+          },
+          {
+            id: 'places_city',
+            type: 'symbol',
+            source: 'protomaps',
+            'source-layer': 'places',
+            filter: ['in', 'pmap:kind', 'city', 'town'],
+            minzoom: 5,
+            layout: {
+              'text-field': ['get', 'name'],
+              'text-font': ['Noto Sans Regular'],
+              'text-size': ['interpolate', ['linear'], ['zoom'], 5, 10, 12, 15],
+            },
+            paint: {
+              'text-color': t.label,
+              'text-halo-color': t.label_halo,
+              'text-halo-width': 1.5,
+            },
+          },
+          {
+            id: 'places_locality',
+            type: 'symbol',
+            source: 'protomaps',
+            'source-layer': 'places',
+            filter: ['in', 'pmap:kind', 'neighbourhood', 'suburb', 'hamlet'],
+            minzoom: 12,
+            layout: {
+              'text-field': ['get', 'name'],
+              'text-font': ['Noto Sans Regular'],
+              'text-size': 11,
+            },
+            paint: {
+              'text-color': t.label,
+              'text-halo-color': t.label_halo,
+              'text-halo-width': 1,
+            },
+          },
+          {
+            id: 'roads_labels',
+            type: 'symbol',
+            source: 'protomaps',
+            'source-layer': 'roads',
+            minzoom: 13,
+            filter: ['in', 'pmap:kind', 'major_road', 'highway', 'motorway'],
+            layout: {
+              'symbol-placement': 'line',
+              'text-field': ['get', 'name'],
+              'text-font': ['Noto Sans Regular'],
+              'text-size': 11,
+            },
+            paint: {
+              'text-color': t.label,
+              'text-halo-color': t.label_halo,
+              'text-halo-width': 1.5,
+            },
+          },
+        ],
+      };
+    }
+
+    let currentTheme = 'light';
+
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: buildStyle(currentTheme),
+      center: [0, 20],
+      zoom: 2,
+      hash: true,
+    });
+
+    map.addControl(new maplibregl.NavigationControl(), 'top-right');
+    map.addControl(new maplibregl.ScaleControl({ maxWidth: 120 }), 'bottom-right');
+    map.addControl(new maplibregl.FullscreenControl(), 'top-right');
+
+    map.on('mousemove', (e) => {
+      const { lng, lat } = e.lngLat;
+      document.getElementById('coords').textContent =
+        `${lat.toFixed(5)}, ${lng.toFixed(5)} · zoom ${map.getZoom().toFixed(2)}`;
+    });
+
+    document.querySelectorAll('#style-picker button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#style-picker button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentTheme = btn.dataset.theme;
+        map.setStyle(buildStyle(currentTheme));
+      });
+    });
+  </script>
+</body>
+</html>
